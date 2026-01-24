@@ -15,6 +15,7 @@ GLOBAL0(unsigned long long uploaded);                 /* bytes uploaded */
 GLOBAL0(signed char anon_only); /* allows only anonymous connections */
 GLOBAL0(struct sockaddr_storage *trustedip); /* IP address accepting non-anonymous connections */
 GLOBAL0(volatile signed char logging);
+GLOBAL(int systemd_init, 0); /* Daemon is started by systemd */
 
 #ifdef THROTTLING
 GLOBAL0(unsigned long throttling_delay);
