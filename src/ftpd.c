@@ -8,6 +8,7 @@
 #include "ftpwho-read.h"
 #include "globals.h"
 #include "caps.h"
+#include "systemd.h"
 #include "alt_arc4random.h"
 #if defined(WITH_UPLOAD_SCRIPT)
 # include "upload-pipe.h"
@@ -361,6 +362,9 @@ void die(const int err, const int priority, const char * const format, ...)
     vsnprintf(line, sizeof line, format, va);
     addreply(err, "%s", line);
     va_end(va);
+#ifdef USE_SYSTEMD
+    sd_notifyf(0, "STOPPING=1\nSTATUS=%s\nMAINPID=%d", line, getpid());
+#endif
     doreply();
     logfile(priority, "%s", line);
     _EXIT(-priority - 1);
@@ -5374,6 +5378,8 @@ static void standalone_server(void)
     struct addrinfo hints, *res, *res6;
     fd_set rs;
     int max_fd;
+    struct timeval *timeout = NULL;
+    uint64_t nr_reqs = 0;
 
 # ifndef NO_INETD
     standalone = 1;
@@ -5466,22 +5472,42 @@ static void standalone_server(void)
         max_fd = listenfd6;
     }
     max_fd++;
+# ifdef USE_SYSTEMD
+    sd_notifyf(0, "READY=1\nSTATUS=Waiting for Connections\nMAINPID=%d", getpid());
+    sd_notify(0, "WATCHDOG=1\nWATCHDOG_USEC=30000000");
+    timeout = &sd_notify_timeout;
+# endif
     while (stop_server == 0) {
         safe_fd_set(listenfd, &rs);
         safe_fd_set(listenfd6, &rs);
-        if (select(max_fd, &rs, NULL, NULL, NULL) <= 0) {
+        if (select(max_fd, &rs, NULL, NULL, timeout) <= 0) {
             if (errno != EINTR) {
                 (void) sleep(1);
             }
-            continue;
+        } else {
+            if (safe_fd_isset(listenfd, &rs)) {
+                nr_reqs++;
+                accept_client(listenfd);
+            }
+            if (safe_fd_isset(listenfd6, &rs)) {
+                nr_reqs++;
+                accept_client(listenfd6);
+            }
         }
-        if (safe_fd_isset(listenfd, &rs)) {
-            accept_client(listenfd);
+# ifdef USE_SYSTEMD
+        if (nb_children > 0U) {
+            sd_notifyf(0, "WATCHDOG=1\nSTATUS=%u Active Connection%s\nMAINPID=%d",
+                       nb_children, nb_children > 1 ? "s" : "", getpid());
+        } else {
+            sd_notifyf(0, "WATCHDOG=1\nSTATUS=Idle. %lu Connection%s Total\nMAINPID=%d",
+                       nr_reqs, nr_reqs > 1 ? "s" : "", getpid());
         }
-        if (safe_fd_isset(listenfd6, &rs)) {
-            accept_client(listenfd6);
-        }
+        sd_notify_timeout = (struct timeval){ 10, 0 };
+# endif
     }
+# ifdef USE_SYSTEMD
+    sd_notifyf(0, "STOPPING=1\nSTATUS=Pure FTPd Shutting Down\nMAINPID=%d", getpid());
+# endif
 }
 #endif
 
@@ -5563,9 +5589,13 @@ int pureftpd_start(int argc, char *argv[], const char *home_directory_)
     openlog("pure-ftpd", LOG_NDELAY | log_pid, DEFAULT_FACILITY);
 #endif
 
+#ifdef USE_SYSTEMD
+    sd_notifyf(0, "STATUS=Starting Pure FTPd\nMAINPID=%d", getpid());
+#endif
 #ifdef USE_CAPABILITIES
     set_initial_caps();
 #endif
+
     set_signals();
 
     loggedin = 0;
@@ -6235,7 +6265,12 @@ int pureftpd_start(int argc, char *argv[], const char *home_directory_)
         first_authentications->next = NULL;
     }
 #ifndef NO_STANDALONE
-    dodaemonize();
+  #ifdef USE_SYSTEMD
+    // Do not daemonize when started by systemd.
+    systemd_init = sd_booted() > 0 && (getppid() == 1 || getenv("NOTIFY_SOCKET"));
+  #endif
+    if (systemd_init == 0)
+        dodaemonize();
 #endif
 #ifndef SAVE_DESCRIPTORS
     if (no_syslog == 0 && (log_pid || syslog_facility != DEFAULT_FACILITY)) {
