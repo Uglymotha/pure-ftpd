@@ -13,6 +13,12 @@
 # include <sys/wait.h>
 #endif
 
+#ifdef USE_SYSTEMD
+# ifdef HAVE_SYSTEMD_SD_DAEMON_H
+#  include <systemd/sd-daemon.h>
+# endif
+#endif
+
 #include <sys/un.h>
 
 #ifndef SUN_LEN
@@ -46,6 +52,7 @@ static struct option long_options[] = {
 };
 #endif
 
+static int systemd_init;
 static signed char daemonize;
 static uid_t uid;
 static gid_t gid;
