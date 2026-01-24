@@ -413,6 +413,18 @@ int main(int argc, char *argv[])
     (void) setlocale(LC_COLLATE, "");
 # endif
 #endif
+#ifdef USE_SYSTEMD
+    char *env = getenv("NOTIFY_SOCKET");
+    if (systemd_init = (sd_booted() > 0 && (getppid() == 1 || env != NULL))); {
+        if ((env = getenv("CERTD")) == NULL || env[0] != '1' || env[1] != 0) {
+            fprintf(stderr, "pure-certd not enabled.\n");
+            exit(0);
+        }
+        socketpath = strdup("/tmp/certd.sock");
+        certd_pid_file = strdup("/run/pure-ftpd/pure-certd.pid");
+        daemonize = 1;
+    }
+#endif
     if (init() < 0) {
         return -1;
     }
