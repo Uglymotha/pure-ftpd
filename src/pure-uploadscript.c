@@ -45,7 +45,7 @@ static int upload_pipe_ropen(void)
             (void) sleep(OPEN_DELAY);
             goto again;
         }
-        perror("Unable to open " UPLOAD_PIPE_FILE);
+        fprintf(stderr, "Unable to open %s\n", UPLOAD_PIPE_FILE);
         return -1;
     }
     setcloexec(upload_pipe_fd);
@@ -57,7 +57,7 @@ static int upload_pipe_ropen(void)
         st.st_uid != (uid_t) 0
 #endif
         ) {
-        fprintf(stderr, "Insecure permissions on " UPLOAD_PIPE_FILE "\n");
+        fprintf(stderr, "Insecure permissions on %s\n", UPLOAD_PIPE_FILE);
         (void) close(upload_pipe_fd);
         return -1;
     }
@@ -191,7 +191,9 @@ static void dodaemonize(void)
 #ifdef HAVE_CLOSEFROM
         (void) closefrom(3);
 #endif
-        (void) closedesc_all(0);
+        if (systemd_init == 0) {
+            (void) closedesc_all(0);
+        }
     }
 }
 
@@ -467,7 +469,17 @@ int main(int argc, char *argv[])
     (void) setlocale(LC_COLLATE, "");
 # endif
 #endif
-
+#ifdef USE_SYSTEMD
+    char *env = getenv("NOTIFY_SOCKET");
+    if ((systemd_init = (sd_booted() > 0 && (getppid() == 1 || env != NULL)))) {
+        if ((env = getenv("USCRIPT")) == NULL || env[0] != '1' || env[1] != 0) {
+            fprintf(stderr, "pure-uploadscript not enabled.\n");
+            exit(0);
+        }
+        uploadscript_pid_file = strdup("/run/pure-ftpd/pure-uploadscript.pid");
+        daemonize = 1;
+    }
+#endif
     if (init() < 0) {
         return -1;
     }
