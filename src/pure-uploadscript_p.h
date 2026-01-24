@@ -11,6 +11,12 @@
 #  include <sys/wait.h>
 # endif
 
+#ifdef USE_SYSTEMD
+# ifdef HAVE_SYSTEMD_SD_DAEMON_H
+#  include <systemd/sd-daemon.h>
+# endif
+#endif
+
 static const char *GETOPT_OPTIONS =
     "Bg:"
 # ifndef NO_GETOPT_LONG
@@ -32,6 +38,7 @@ static struct option long_options[] = {
 };
 #endif
 
+static int systemd_init = 0;
 static signed char daemonize;
 static const char *uploadscript_pid_file = UPLOADSCRIPT_PID_FILE;
 static uid_t uid;
