@@ -35,6 +35,10 @@ EXTRA_DIST = \
 	pureftpd-ldap.conf \
 	pureftpd-mysql.conf \
 	pureftpd-pgsql.conf \
+	pure-ftpd.service \
+	pure-ftpd.socket \
+	pure-ftpd\@.service \
+	pure-ftpd-user.service \
 	pureftpd.schema
 
 SUBDIRS = \

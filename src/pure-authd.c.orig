@@ -68,9 +68,7 @@ static void dodaemonize(void)
 #ifdef HAVE_CLOSEFROM
         (void) closefrom(3);
 #endif
-        if (systemd_init == 0) {
-            (void) closedesc_all(1);
-        }
+        (void) closedesc_all(1);
     }
 }
 

@@ -1,11 +1,11 @@
 #include <config.h>
 
-#ifndef WITH_EXTAUTH
+#ifndef WITH_TLS
 #include <stdio.h>
 
 int main(void)
 {
-    puts("Please compile the server with --with-extauth to use this feature.\n"
+    puts("Please compile the server with --with-tls to use this feature.\n"
          "Thank you.");
 
     return 0;
@@ -13,8 +13,8 @@ int main(void)
 #else
 
 #include "ftpd.h"
-#include "log_extauth.h"
-#include "pure-authd_p.h"
+#include "tls_extcert.h"
+#include "pure-certd_p.h"
 #include "safe_rw.h"
 
 #ifdef WITH_DMALLOC
@@ -68,9 +68,7 @@ static void dodaemonize(void)
 #ifdef HAVE_CLOSEFROM
         (void) closefrom(3);
 #endif
-        if (systemd_init == 0) {
-            (void) closedesc_all(1);
-        }
+        (void) closedesc_all(1);
     }
 }
 
@@ -134,7 +132,7 @@ static int parseoptions(int argc, char *argv[])
             break;
         }
         case 'p': {
-            if ((authd_pid_file = strdup(optarg)) == NULL) {
+            if ((certd_pid_file = strdup(optarg)) == NULL) {
                 perror("Oh no ! More memory !");
             }
             break;
@@ -221,10 +219,10 @@ static void updatepidfile(void)
                          (unsigned long) getpid()), sizeof buf)) {
         return;
     }
-    if (unlink(authd_pid_file) != 0 && errno != ENOENT) {
+    if (unlink(certd_pid_file) != 0 && errno != ENOENT) {
         return;
     }
-    if ((fd = open(authd_pid_file, O_CREAT | O_WRONLY | O_TRUNC |
+    if ((fd = open(certd_pid_file, O_CREAT | O_WRONLY | O_TRUNC |
                    O_NOFOLLOW, (mode_t) 0644)) == -1) {
         return;
     }
@@ -235,41 +233,9 @@ static void updatepidfile(void)
     close(fd);
 }
 
-static void callback_client_account(const char *str)
-{
-    newenv_str(ENV_AUTHD_ACCOUNT, str);
-}
-
-static void callback_client_password(const char *str)
-{
-    newenv_str(ENV_AUTHD_PASSWORD, str);
-}
-
-static void callback_client_sa_host(const char *str)
-{
-    newenv_str(ENV_AUTHD_SA_HOST, str);
-}
-
-static void callback_client_sa_port(const char *str)
-{
-    newenv_str(ENV_AUTHD_SA_PORT, str);
-}
-
-static void callback_client_peer_host(const char *str)
-{
-    newenv_str(ENV_AUTHD_PEER_HOST, str);
-}
-
-static void callback_client_encrypted(const char *str)
-{
-    newenv_str(ENV_AUTHD_ENCRYPTED, str);
-}
-
 static void callback_client_sni_name(const char *str)
 {
-    if (*str != 0) {
-        newenv_str(ENV_AUTHD_CLIENT_SNI_NAME, str);
-    }
+    newenv_str(ENV_CERTD_SNI_NAME, str);
 }
 
 static void callback_client_end(const char *str)
@@ -321,11 +287,11 @@ static void process(const int clientfd)
     closedesc_all(1);
     linepnt = line;
     while ((crpoint = strchr(linepnt, '\n')) != NULL) {
-        const ExtauthdCallBack *scanned;
+        const CertdCallBack *scanned;
         size_t keyword_len;
 
         *crpoint = 0;
-        scanned = extauthd_callbacks;
+        scanned = certd_callbacks;
         while (scanned->keyword != NULL) {
             keyword_len = strlen(scanned->keyword);
             if (strncmp(scanned->keyword, linepnt, keyword_len) == 0) {
@@ -345,15 +311,15 @@ static void process(const int clientfd)
         _exit(EXIT_FAILURE);
     }
     close(pfds[1]);
-#ifdef DO_AUTHD_TIMEOUT
-    (void) alarm(AUTHD_SCRIPT_TIMEOUT);
+#ifdef DO_CERTD_TIMEOUT
+    (void) alarm(CERTD_SCRIPT_TIMEOUT);
 #endif
     (void) execl(script, script, (char *) NULL);
 
     _exit(EXIT_SUCCESS);
 }
 
-static int listencnx(void)
+int listencnx(void)
 {
     struct sockaddr_un *saddr;
     int clientfd;
@@ -388,18 +354,17 @@ static int listencnx(void)
         perror("Unable to change perms on the local socket");
         goto bye;
     }
-    if (listen(kindy, AUTHD_BACKLOG) != 0) {
+    if (listen(kindy, CERTD_BACKLOG) != 0) {
         perror("Unable to listen the local socket");
         goto bye;
     }
     if (changeuidgid() < 0) {
         perror("Identity change");
-        (void) unlink(authd_pid_file);
         goto bye;
     }
     do {
         if ((clientfd = accept(kindy, NULL, NULL)) == -1) {
-            if (exit_authd != 0) {
+            if (exit_certd != 0) {
                 break;
             }
             (void) sleep(1);
@@ -408,7 +373,7 @@ static int listencnx(void)
         setcloexec(clientfd);
         process(clientfd);
         close(clientfd);
-    } while (exit_authd == 0);
+    } while (exit_certd == 0);
     ret = 0;
 
     bye:
@@ -426,7 +391,7 @@ static void sigterm(int sig)
 {
     (void) sig;
 
-    exit_authd = 1;
+    exit_certd = 1;
     if (kindy != -1) {
         close(kindy);
         kindy = -1;
@@ -451,12 +416,12 @@ int main(int argc, char *argv[])
 #ifdef USE_SYSTEMD
     char *env = getenv("NOTIFY_SOCKET");
     if (systemd_init = (sd_booted() > 0 && (getppid() == 1 || env != NULL))); {
-        if ((env = getenv("AUTHD")) == NULL || env[0] != '1' || env[1] != 0) {
-            fprintf(stderr, "pure-authd not enabled.\n");
+        if ((env = getenv("CERTD")) == NULL || env[0] != '1' || env[1] != 0) {
+            fprintf(stderr, "pure-certd not enabled.\n");
             exit(0);
         }
-        socketpath = strdup("/tmp/authd.sock");
-        authd_pid_file = strdup("/run/pure-ftpd/pure-authd.sock");
+        socketpath = strdup("/tmp/certd.sock");
+        certd_pid_file = strdup("/run/pure-ftpd/pure-certd.pid");
         daemonize = 1;
     }
 #endif
@@ -473,7 +438,7 @@ int main(int argc, char *argv[])
         return -1;
     }
     if (script == NULL || *script != '/') {
-        fprintf(stderr, "You must give -r /path/to/auth/program\n");
+        fprintf(stderr, "You must give -r /path/to/cert/program\n");
         return -2;
     }
     if (socketpath == NULL || *socketpath == 0) {
@@ -491,7 +456,7 @@ int main(int argc, char *argv[])
     signal(SIGCHLD, SIG_DFL);
 #endif
     err = listencnx();
-    (void) unlink(authd_pid_file);
+    (void) unlink(certd_pid_file);
 
     return err;
 }
