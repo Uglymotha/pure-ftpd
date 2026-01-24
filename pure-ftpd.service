@@ -1,0 +1,44 @@
+[Unit]
+Description=Pure FTP Daemon
+After=network-online.target
+
+[Service]
+Type=simple
+User=pure-ftpd
+Group=pure-ftpd
+UMask=0027
+RuntimeDirectory=pure-ftpd
+RuntimeDirectoryMode=0700
+CapabilityBoundingSet=CAP_AUDIT_WRITE CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_CHOWN CAP_SYS_NICE CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_AUDIT_WRITE CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_SYS_CHROOT CAP_CHOWN CAP_SYS_NICE CAP_DAC_READ_SEARCH
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHostname=true
+ProtectProc=noaccess
+ProcSubset=pid
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=true
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+PrivateDevices=true
+PrivateTmp=true
+Environment=CONF=/etc/pure-ftpd.conf
+Environment=AUTHD=0
+Environment=AUTHD_CONF=
+Environment=CERTD=0
+Environment=CERTD_CONF=
+EnvironmentFile=-/etc/systemd/pure-ftpd.conf
+ExecStart=/usr/sbin/pure-ftpd $CONF
+ExecStartPost=/usr/sbin/pure-authd $AUTHD_CONF
+ExecStartPost=/usr/sbin/pure-certd $CERTD_CONF
+NotifyAccess=main
+WatchdogSec=30
+
+[Install]
+WantedBy=multi-user.target

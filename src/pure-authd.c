@@ -446,6 +446,14 @@ int main(int argc, char *argv[])
     (void) setlocale(LC_COLLATE, "");
 # endif
 #endif
+#ifdef USE_SYSTEMD
+    char *env;
+    if ((env = getenv("AUTHD")) == NULL || env[0] != '1' || env[1] != 0) {
+        fprintf(stderr, "pure-authd not enabled.\n");
+        exit(0);
+    }
+    daemonize = 1;
+#endif
     if (init() < 0) {
         return -1;
     }
