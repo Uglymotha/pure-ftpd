@@ -12,6 +12,12 @@ int main(void)
 }
 #else
 
+#ifdef USE_CAPABILITIES
+# ifdef HAVE_SYS_CAPABILITY_H
+# include <sys/capability.h>
+# endif
+#endif
+
 # include "ftpd.h"
 # include "dynamic.h"
 # include "ftpwho-update.h"
@@ -110,14 +116,14 @@ static void text_output_header(void)
 {
     if (verbose == 0) {
         puts("\n"
-"+------+---------+-------+------+-------------------------------------------+\n"
-"| PID  |  Login  |For/Spd| What |                 File/IP                   |\n"
-"+------+---------+-------+------+-------------------------------------------+");
+"+---------+------------+-------+------+-----------------------------------------------+\n"
+"|   PID   |   Login    |For/Spd| What |                   File/IP                     |\n"
+"+---------+------------+-------+------+-----------------------------------------------+");
     } else {
         puts("\n"
-"+------+---------+-------+------+-------------------------------------------+\n"
-"| PID  |  Login  |For/Spd| What |     File/Remote IP/Size(Kb)/Local IP      |\n"
-"+------+---------+-------+------+-------------------------------------------+");
+"+---------+------------+-------+------+-----------------------------------------------+\n"
+"|   PID   |   Login    |For/Spd| What |        File/Remote IP/Size(Kb)/Local IP       |\n"
+"+---------+------------+-------+------+-----------------------------------------------+");
     }
 }
 
@@ -149,11 +155,11 @@ static void text_output_line(const pid_t pid, const char * const account,
             }
         }
     }
-    printf("|%5lu | %-8s| %02lu:%02lu | %s | %-42s|\n",
+    printf("|%8lu | %-11s| %02lu:%02lu | %s | %-46s|\n",
            (unsigned long) pid, account,
            (since / 60UL) / 60UL, (since / 60UL) % 60UL,
            state, filename);
-    printf("|  ''  |    ''   |");
+    printf("|   ''    |     ''     |");
     if (bandwidth > 0UL) {
         if (bandwidth < 1024UL) {
             printf("%4lub/s|", bandwidth);
@@ -183,22 +189,22 @@ static void text_output_line(const pid_t pid, const char * const account,
     } else {
         printf("  ''  |");
     }
-    printf(" ->%39.39s |\n", hbuf);
+    printf(" ->%42.42s  |\n", hbuf);
     if (verbose != 0) {
         if (current_size > 0) {
             if (total_size > 0) {
-                printf("|  ''  |    ''   |       |      | Total size:%9llu Transferred:%9llu |\n",
+                printf("|   ''    |     ''     |       |      | Total size:%9llu Transferred:%9llu    |\n",
                        (unsigned long long) (total_size / 1024),
                        (unsigned long long) (current_size / 1024));
             } else {
-                printf("|  ''  |    ''   |       |      | Transferred: %-29llu |\n",
+                printf("|   ''    |     ''     |       |      | Transferred: %-29llu     |\n",
                        (unsigned long long) (current_size / 1024));
             }
         }
-        printf("|  ''  |    ''   |       |      | <-%33.33s:%-5.5s |\n",
+        printf("|   ''    |     ''     |       |      | <-%33.33s:%-5.5s     |\n",
                local_hbuf, local_port);
     }
-    puts("+------+---------+-------+------+-------------------------------------------+");
+    puts("+---------+------------+-------+------+-----------------------------------------------+");
 }
 
 static void text_output_footer(void)
@@ -723,10 +729,23 @@ int main(int argc, char *argv[])
     const char *state;
     time_t now;
     int fodder;
+#ifdef USE_CAPABILITIES
+    cap_flag_value_t cap;
+    cap_get_flag(cap_get_proc(), CAP_DAC_OVERRIDE, CAP_EFFECTIVE, &cap);
+#endif
 
 #ifndef NON_ROOT_FTP
-    if (geteuid() != (uid_t) 0) {
-        puts("You must be root to run this. Sorry.");
+    if (geteuid() != (uid_t) 0
+#ifdef USE_CAPABILITIES
+        && cap != CAP_SET
+#endif
+       ) {
+        puts("You must be root to run this.\n"
+# ifdef USE_CAPABILITIES
+             "Or 'sudo setcap cap_dac_override+ep pure-ftpwho'.\n"
+             "And limit the users/groups that can execute it.\n"
+# endif
+             "Sorry.");
         return 1;
     }
 #endif
@@ -836,6 +855,8 @@ int main(int argc, char *argv[])
             st.st_size != (off_t) sizeof (FTPWhoEntry) ||
 #ifdef NON_ROOT_FTP
             st.st_uid != geteuid()
+#elif defined USE_CAPABILITIES
+            (st.st_uid != (uid_t) 0 && cap != CAP_SET)
 #else
             st.st_uid != (uid_t) 0
 #endif
