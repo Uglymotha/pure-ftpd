@@ -1453,11 +1453,11 @@ void douser(const char *username)
             if (seteuid(authresult.uid) != 0) {
                 goto cantsec;
             }
-#  ifdef USE_CAPABILITIES
-            drop_login_caps();
-#  endif
 # endif
         }
+#endif
+#ifdef USE_CAPABILITIES
+        drop_login_caps();
 #endif
 
 #ifndef MINIMAL
@@ -1943,11 +1943,11 @@ void dopass(char *password)
     if (seteuid(authresult.uid) != 0) {
         _EXIT(EXIT_FAILURE);
     }
-#  ifdef USE_CAPABILITIES
-    drop_login_caps();
-#  endif
 # endif
     enablesignals();
+#endif
+#ifdef USE_CAPABILITIES
+    drop_login_caps();
 #endif
     logfile(LOG_INFO, MSG_IS_NOW_LOGGED_IN, account);
 #ifdef FTPWHO
@@ -4900,6 +4900,9 @@ static void doit(void)
     unsigned int users = 0U;
     int display_banner = 1;
 
+#ifdef USE_CAPABILITIES
+    set_accept_caps();
+#endif
     client_init_reply_buf();
     session_start_time = time(NULL);
     fixlimits();
@@ -5457,6 +5460,9 @@ static void standalone_server(void)
 # endif
         goto cant_bind;
     }
+#ifdef USE_CAPABILITIES
+    drop_cap(CAP_NET_BIND_SERVICE);
+#endif
     updatepidfile();
     setprocessname("pure-ftpd (SERVER)");
     FD_ZERO(&rs);
@@ -5528,6 +5534,8 @@ int pureftpd_start(int argc, char *argv[], const char *home_directory_)
     int bypass_ipv6 = 0;
     struct passwd *pw;
 
+    root_started = (getuid() == 0);
+    have_caps = get_initial_caps();
     (void) home_directory_;
 #ifdef NON_ROOT_FTP
     home_directory = home_directory_;
