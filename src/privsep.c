@@ -7,6 +7,7 @@
 # include "globals.h"
 # include "privsep_p.h"
 # include "privsep.h"
+# include "caps.h"
 
 # ifdef WITH_DMALLOC
 #  include <dmalloc.h>
@@ -158,13 +159,17 @@ static int privsep_privpart_removeftpwhoentry(const int psfd)
 {
     PrivSepAnswer answer;
 
-    privsep_priv_user();
+    if (root_started != 0) {
+        privsep_priv_user();
+    }
     if (scoreboardfile == NULL || unlink(scoreboardfile) != 0) {
         answer.removeftpwhoentry.cmd = PRIVSEPCMD_ANSWER_ERROR;
     } else {
         answer.removeftpwhoentry.cmd = PRIVSEPCMD_ANSWER_REMOVEFTPWHOENTRY;
     }
-    privsep_unpriv_user();
+    if (root_started != 0) {
+        privsep_unpriv_user();
+    }
 
     return privsep_sendcmd(psfd, &answer, sizeof answer);
 }
@@ -202,7 +207,9 @@ static int privsep_privpart_bindresport(const int psfd,
 # else
     (void) setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &on, sizeof on);
 # endif
-    privsep_priv_user();
+    if (have_caps == 0) {
+        privsep_priv_user();
+    }
     for (;;) {
         if (query->bindresport.protocol == PF_INET6) {
             STORAGE_PORT6(query->bindresport.ss) = htons(*portlistpnt);
@@ -222,7 +229,9 @@ static int privsep_privpart_bindresport(const int psfd,
         portlistpnt++;
 # endif
     }
-    privsep_unpriv_user();
+    if (have_caps == 0) {
+        privsep_unpriv_user();
+    }
 
     bye:
     ret = privsep_sendfd(psfd, fd);
@@ -356,8 +365,15 @@ int privsep_init(void)
     psfd = sv[0];
     setprocessname("pure-ftpd (PRIV)");
     (void) privsep_privpart_closejunk();
-    privsep_init_privsep_user();
-    privsep_unpriv_user();
+    if (root_started != 0) {
+        privsep_init_privsep_user();
+        privsep_unpriv_user();
+    } else {
+	privsep_uid = getuid();
+    }
+#ifdef USE_CAPABILITIES
+    drop_privsep_caps();
+#endif
     _exit(privsep_privpart_main());
 
     return -1; /* NOTREACHED */
