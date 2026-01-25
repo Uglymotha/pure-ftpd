@@ -16,6 +16,11 @@ int main(void)
 # include "upload-pipe.h"
 # include "safe_rw.h"
 # include "pure-uploadscript_p.h"
+#ifdef USE_CAPABILITIES
+# ifdef HAVE_SYS_CAPABILITY_H
+#  include <sys/capability.h>
+# endif
+#endif
 
 #ifdef WITH_DMALLOC
 # include <dmalloc.h>
@@ -46,7 +51,7 @@ static int upload_pipe_ropen(void)
     setcloexec(upload_pipe_fd);
     if (fstat(upload_pipe_fd, &st) < 0 ||
         (st.st_mode & 0777) != 0600 || !S_ISFIFO(st.st_mode) ||
-#ifdef NON_ROOT_FTP
+#if defined NON_ROOT_FTP || defined USE_CAPABILITIES
         st.st_uid != geteuid()
 #else
         st.st_uid != (uid_t) 0
@@ -193,11 +198,14 @@ static void dodaemonize(void)
 static int init(void)
 {
     (void) close(0);
-#ifndef NON_ROOT_FTP
+#if ! defined NON_ROOT_FTP && ! defined USE_CAPABILITIES
     if (geteuid() != (uid_t) 0) {
         fprintf(stderr, "Sorry, but you have to be root to run this program\n");
         return -1;
     }
+#elif defined USE_CAPABILITIES
+    uid = getuid();
+    gid = getgid();
 #endif
 
     return 0;
@@ -287,7 +295,7 @@ static int parseoptions(int argc, char *argv[])
 static int changeuidgid(void)
 {
 #ifndef NON_ROOT_FTP
-    if (
+    if ((uid != getuid() || gid != getgid()) &&
 #ifdef HAVE_SETGROUPS
         setgroups(1U, &gid) ||
 #endif
@@ -295,6 +303,14 @@ static int changeuidgid(void)
         setuid(uid) || seteuid(uid) || chdir("/")) {
         return -1;
     }
+#endif
+#ifdef USE_CAPABILITIES
+    cap_t caps = cap_init();
+    if (geteuid() != 0 && (cap_clear(caps) == -1 || cap_set_proc(caps) == -1)) {
+        perror("Unable to drop capabilities");
+        return -1;
+    }
+    cap_free(caps);
 #endif
     return 0;
 }
@@ -471,6 +487,10 @@ int main(int argc, char *argv[])
     updatepidfile();
     if (changeuidgid() < 0) {
         perror("Identity change");
+#ifdef USE_CAPABILITIES
+        fprintf(stderr, "Please 'sudo setcap cap_setuid,cap_setgid+ep pure-authd'.\n");
+        fprintf(stderr, "And restrict the users/groups that can execute it.\n");
+#endif
         (void) unlink(uploadscript_pid_file);
         return -1;
     }
