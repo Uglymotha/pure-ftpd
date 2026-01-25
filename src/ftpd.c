@@ -1453,11 +1453,11 @@ void douser(const char *username)
             if (seteuid(authresult.uid) != 0) {
                 goto cantsec;
             }
-#  ifdef USE_CAPABILITIES
-            drop_login_caps();
-#  endif
 # endif
         }
+#endif
+#ifdef USE_CAPABILITIES
+        drop_login_caps();
 #endif
 
 #ifndef MINIMAL
@@ -1943,11 +1943,11 @@ void dopass(char *password)
     if (seteuid(authresult.uid) != 0) {
         _EXIT(EXIT_FAILURE);
     }
-#  ifdef USE_CAPABILITIES
-    drop_login_caps();
-#  endif
 # endif
     enablesignals();
+#endif
+#ifdef USE_CAPABILITIES
+    drop_login_caps();
 #endif
     logfile(LOG_INFO, MSG_IS_NOW_LOGGED_IN, account);
 #ifdef FTPWHO
@@ -2246,9 +2246,14 @@ static int doport3(const int protocol)
 # endif
     int on;
 
+# ifdef USE_CAPABILITIES
+    get_cap(CAP_NET_BIND_SERVICE);
+# endif
 # ifndef NON_ROOT_FTP
     disablesignals();
-    seteuid((uid_t) 0);
+    if (have_caps == 0) {
+        seteuid((uid_t) 0);
+    }
 # endif
     if ((datafd = socket(protocol, SOCK_STREAM, IPPROTO_TCP)) == -1) {
         data_socket_error:
@@ -2292,8 +2297,11 @@ static int doport3(const int protocol)
         portlistpnt++;
 # endif
     }
+# ifdef USE_CAPABILITIES
+    drop_cap(CAP_NET_BIND_SERVICE);
+# endif
 # ifndef NON_ROOT_FTP
-    if (seteuid(authresult.uid) != 0) {
+    if (have_caps == 0 && seteuid(authresult.uid) != 0) {
         _EXIT(EXIT_FAILURE);
     }
     enablesignals();
@@ -4900,6 +4908,11 @@ static void doit(void)
     unsigned int users = 0U;
     int display_banner = 1;
 
+#ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        set_accept_caps();
+    }
+#endif
     client_init_reply_buf();
     session_start_time = time(NULL);
     fixlimits();
@@ -5457,6 +5470,9 @@ static void standalone_server(void)
 # endif
         goto cant_bind;
     }
+#ifdef USE_CAPABILITIES
+    drop_cap(CAP_NET_BIND_SERVICE);
+#endif
     updatepidfile();
     setprocessname("pure-ftpd (SERVER)");
     FD_ZERO(&rs);
@@ -5528,6 +5544,8 @@ int pureftpd_start(int argc, char *argv[], const char *home_directory_)
     int bypass_ipv6 = 0;
     struct passwd *pw;
 
+    root_started = (getuid() == 0);
+    have_caps = get_startup_caps();
     (void) home_directory_;
 #ifdef NON_ROOT_FTP
     home_directory = home_directory_;
@@ -5564,7 +5582,9 @@ int pureftpd_start(int argc, char *argv[], const char *home_directory_)
 #endif
 
 #ifdef USE_CAPABILITIES
-    set_initial_caps();
+    if (have_caps == 1) {
+        set_initial_caps();
+    }
 #endif
     set_signals();
 
