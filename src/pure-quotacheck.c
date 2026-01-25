@@ -14,8 +14,14 @@
 # include <dmalloc.h>
 #endif
 
-static uid_t uid;
-static gid_t gid;
+#ifdef USE_CAPABILITIES
+# ifdef HAVE_SYS_CAPABILITY_H
+#  include <sys/capability.h>
+# endif
+#endif
+
+static uid_t uid = 0;
+static gid_t gid = 0;
 static const char *startpath;
 static unsigned long long total_size;
 static unsigned long long total_files;
@@ -285,7 +291,39 @@ int main(int argc, char *argv[])
     if (argc < 2) {
         help();
     }
-
+#ifdef USE_CAPABILITIES
+    if (isroot == 0) {
+        struct stat sb = { 0 };
+        const cap_value_t cap[] = { CAP_SETUID, CAP_SETGID, CAP_DAC_READ_SEARCH,
+		                    CAP_SYS_CHROOT };
+        int ncaps = sizeof(cap) / sizeof(cap_value_t);
+	stat(argv[0], &sb);
+        cap_flag_value_t cap_e;
+        cap_t caps = cap_get_proc();
+        for (int i = 0, c = 0; caps != NULL && i < ncaps; i++) {
+            cap_get_flag(caps, cap[i], CAP_EFFECTIVE, &cap_e);
+            isroot = (cap_e == CAP_SET) && (++c == ncaps);
+            if (c > 0 && (cap_e != CAP_SET || (sb.st_mode & S_IXOTH))) {
+                if (sb.st_mode & S_IXOTH) {
+                    fprintf(stderr, "%s: Insecure permissions.\n",
+                            basename(argv[0]));
+                } else {
+                    fprintf(stderr, "%s: At least CAP_SETUID, CAP_SETGID, "
+                            "CAP_DAC_READ_SEARCH, CAP_SYS_CHROOT required.\n",
+                            basename(argv[0]));
+                }
+                fprintf(stderr, "Ignoring -u / -g options.\n");
+                if (cap_clear(caps) == -1 || cap_set_proc(caps) == -1) {
+                    perror("Unable to drop capabilities.");
+                    exit(-1);
+                }
+		isroot = 0;
+		break;
+            }
+        }
+        cap_free(caps);
+    }
+#endif
 #ifdef HAVE_SETLOCALE
 # ifdef LC_MESSAGES
     (void) setlocale(LC_MESSAGES, "");
