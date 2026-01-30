@@ -26,7 +26,7 @@ int upload_pipe_open(void)
     }
     if (fstat(upload_pipe_lock, &st) < 0 ||
         (st.st_mode & 0777) != 0600 || !S_ISREG(st.st_mode) ||
-# if defined NON_ROOT_FTP || defined USE_CAPABILITIES
+# ifdef NON_ROOT_FTP
         st.st_uid != geteuid()
 # else
         st.st_uid != (uid_t) 0
@@ -38,7 +38,7 @@ int upload_pipe_open(void)
     }
     if (lstat(UPLOAD_PIPE_LOCK, &st) < 0 ||
         (st.st_mode & 0777) != 0600 || !S_ISREG(st.st_mode) ||
-# if defined NON_ROOT_FTP || defined USE_CAPABILITIES
+# ifdef NON_ROOT_FTP
         st.st_uid != geteuid()
 # else
         st.st_uid != (uid_t) 0
@@ -65,7 +65,7 @@ int upload_pipe_open(void)
     }
     if (fstat(upload_pipe_fd, &st) < 0 ||
         (st.st_mode & 0777) != 0600 || !S_ISFIFO(st.st_mode) ||
-# if defined NON_ROOT_FTP || defined USE_CAPABILITIES
+# ifdef NON_ROOT_FTP
         st.st_uid != geteuid()
 # else
         st.st_uid != (uid_t) 0
@@ -76,7 +76,7 @@ int upload_pipe_open(void)
     }
     if (lstat(UPLOAD_PIPE_FILE, &st) < 0 ||
         (st.st_mode & 0777) != 0600 || !S_ISFIFO(st.st_mode) ||
-# if defined NON_ROOT_FTP || defined USE_CAPABILITIES
+# ifdef NON_ROOT_FTP
         st.st_uid != geteuid()
 # else
         st.st_uid != (uid_t) 0

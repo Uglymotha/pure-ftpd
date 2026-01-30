@@ -9,8 +9,6 @@
 # define GLOBAL(A, B) extern A
 #endif
 
-GLOBAL(int root_started, 1); /* Daemon is started by root */
-GLOBAL(int have_caps, 1); /* Kernel has capabilities enabled */
 GLOBAL(char default_tz_for_putenv[], "TZ=UTC+00:00"); /* default value for TZ */
 GLOBAL0(unsigned long long downloaded);               /* bytes downloaded */
 GLOBAL0(unsigned long long uploaded);                 /* bytes uploaded */

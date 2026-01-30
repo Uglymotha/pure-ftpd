@@ -111,7 +111,11 @@ int ftpwho_initwho(void)
         }
     } else {
         if (fstat(fd, &st) != 0 || !S_ISDIR(st.st_mode) ||
-            st.st_uid != getuid()
+#ifdef NON_ROOT_FTP
+            st.st_uid != geteuid()
+#else
+            st.st_uid != (uid_t) 0
+#endif
             ) {
             close(fd);
             return -1;
@@ -149,7 +153,11 @@ int ftpwho_initwho(void)
     }
     if (fstat(mmap_fd, &st) != 0 || !S_ISREG(st.st_mode) ||
         (st.st_mode & 0600) != 0600 ||
-        st.st_uid != getuid()
+#ifdef NON_ROOT_FTP
+        st.st_uid != geteuid()
+#else
+        st.st_uid != (uid_t) 0
+#endif
         ) {
         err2:
         close(mmap_fd);

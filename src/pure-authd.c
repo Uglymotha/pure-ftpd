@@ -74,15 +74,12 @@ static void dodaemonize(void)
 
 static int init(void)
 {
-#if ! defined NON_ROOT_FTP && ! defined USE_CAPABILITIES
+#ifndef NON_ROOT_FTP
     if (geteuid() != (uid_t) 0) {
         fprintf(stderr,
         "Sorry, but you have to be root to run this program\n");
         return -1;
     }
-#elif defined USE_CAPABILITIES
-    uid = getuid();
-    gid = getgid();
 #endif
 
     return 0;
@@ -395,10 +392,6 @@ static int listencnx(void)
     }
     if (changeuidgid() < 0) {
         perror("Identity change");
-#ifdef USE_CAPABILITIES
-        perror("Please 'sudo setcap cap_setuid,cap_setgid+ep pure-authd'.");
-        perror("And restrict the users/groups that can execute it.");
-#endif
         (void) unlink(authd_pid_file);
         goto bye;
     }
