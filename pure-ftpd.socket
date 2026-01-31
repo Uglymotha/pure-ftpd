@@ -1,0 +1,9 @@
+[Unit]
+Description=Pure-FTPd Socket
+
+[Socket]
+ListenStream=21
+Accept=yes
+
+[Install]
+WantedBy=sockets.target
