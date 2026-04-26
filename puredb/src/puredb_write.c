@@ -6,6 +6,8 @@
 #include "puredb_p.h"
 #include "puredb_write.h"
 
+#define PUREDB_U32_STORAGE_MAX ((puredb_u32_t) 0xffffffffU)
+
 #ifndef HAVE_STRDUP
 static char *strdup(const char *str)
 {
@@ -81,11 +83,27 @@ int puredbw_add(PureDBW * const dbw,
                 const char * const key, const size_t key_len,
                 const char * const content, const size_t content_len)
 {
-    const puredb_u32_t hash = puredbw_hash(key, key_len);
-    const puredb_u32_t hash_hi = hash & 0xff;
-    Hash0 * const hash0 = &dbw->hash_table0[hash_hi];
+    puredb_u32_t hash;
+    puredb_u32_t hash_hi;
+    Hash0 *hash0;
+    const size_t max_u32 = (size_t) 0xffffffffU;
+    size_t record_size;
     Hash1 *hash1;
 
+    if (key_len > max_u32 || content_len > max_u32 ||
+        content_len > max_u32 - (sizeof(puredb_u32_t) + sizeof(puredb_u32_t)) ||
+        key_len > max_u32 - (sizeof(puredb_u32_t) + sizeof(puredb_u32_t)) -
+        content_len) {
+        return -1;
+    }
+    record_size = sizeof(puredb_u32_t) + sizeof(puredb_u32_t) +
+        key_len + content_len;
+    if ((size_t) dbw->data_offset_counter > max_u32 - record_size) {
+        return -1;
+    }
+    hash = puredbw_hash(key, key_len);
+    hash_hi = hash & 0xff;
+    hash0 = &dbw->hash_table0[hash_hi];
     if (hash0->hash1_list == NULL) {
         hash0->hash1_list_size = sizeof(Hash1);
         if ((hash0->hash1_list = malloc(hash0->hash1_list_size)) == NULL) {
