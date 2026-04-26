@@ -101,6 +101,10 @@ int fakesnprintf_vsnprintf(char * const str_, const size_t size_,
     unsigned char hasmaxlen;
     unsigned char plussign;
 
+    if (size_ == 0U) {
+        return 0;
+    }
+
     str = str_;
     size = size_;
     str_[size_ - 1U] = 1;
