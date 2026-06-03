@@ -423,7 +423,7 @@ static void updatepidfile(void)
     if (unlink(uploadscript_pid_file) != 0 && errno != ENOENT) {
         return;
     }
-    if ((fd = open(uploadscript_pid_file, O_CREAT | O_WRONLY | O_TRUNC |
+    if ((fd = open(uploadscript_pid_file, O_CREAT | O_EXCL | O_WRONLY |
                    O_NOFOLLOW, (mode_t) 0644)) == -1) {
         return;
     }
