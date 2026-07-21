@@ -10,5 +10,6 @@ void pure_memzero(void * const pnt, const size_t len);
 int pure_memcmp(const void * const b1_, const void * const b2_, size_t len);
 #endif
 int pure_strcmp(const char * const s1, const char * const s2);
+char *pure_strtok2(char **cursor, const char delim);
 
 #endif

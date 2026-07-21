@@ -161,41 +161,6 @@ static void enable_echo(void)
 #endif
 }
 
-/*
- * The difference between this strtok() and the libc's one is that
- * this one doesn't skip empty fields, and takes a char instead of a
- * string as a delimiter.
- * This strtok2() variant leaves zeroes.
- */
-
-static char *my_strtok2(char *str, const char delim)
-{
-    static char *s;
-    static char save;
-
-    if (str != NULL) {
-        if (*str == 0) {
-            return NULL;
-        }
-        s = str;
-        scan:
-        while (*s != 0 && *s != delim) {
-            s++;
-        }
-        save = *s;
-        *s = 0;
-
-        return str;
-    }
-    if (s == NULL || save == 0) {
-        return NULL;
-    }
-    s++;
-    str = s;
-
-    goto scan;
-}
-
 static void filter_pw_line_sep(char *str)
 {
     if (str == NULL) {
@@ -404,6 +369,8 @@ static void strip_lf(char *str)
 
 static int parse_pw_line(char *line, PWInfo * const pwinfo)
 {
+    char *cursor = line;
+
     pwinfo->login = NULL;
     pwinfo->pwd = NULL;
     pwinfo->gecos = NULL;
@@ -423,51 +390,51 @@ static int parse_pw_line(char *line, PWInfo * const pwinfo)
     pwinfo->has_per_user_max = 0;
     pwinfo->per_user_max = 0U;
 
-    if ((line = my_strtok2(line, *PW_LINE_SEP)) == NULL || *line == 0) {   /* account */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* account */
         return -1;
     }
     pwinfo->login = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL || *line == 0) {   /* pwd */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* pwd */
         return -1;
     }
     pwinfo->pwd = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL || *line == 0) {   /* uid */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* uid */
         return -1;
     }
     pwinfo->uid = (uid_t) strtoul(line, NULL, 10);
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL || *line == 0) {   /* gid */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* gid */
         return -1;
     }
     pwinfo->gid = (gid_t) strtoul(line, NULL, 10);
     if (pwinfo->uid <= (uid_t) 0 || pwinfo->gid <= (gid_t) 0) {
         return -1;
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* gecos */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* gecos */
         return -1;
     }
     pwinfo->gecos = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL || *line == 0) {   /* home */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* home */
         return -1;
     }
     if (*line != '/') {
         return -1;
     }
     pwinfo->home = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* bw_ul */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* bw_ul */
         return 0;
     }
     if (*line != 0) {
         pwinfo->has_bw_ul = 1;
         pwinfo->bw_ul = strtoul(line, NULL, 10);
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* bw_dl */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* bw_dl */
         return 0;
     }
     if (*line != 0) {
         pwinfo->has_bw_dl = 1;
         pwinfo->bw_dl = strtoul(line, NULL, 10);
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* ratio up */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* ratio up */
         return 0;
     }
     if (*line != 0) {
@@ -476,7 +443,7 @@ static int parse_pw_line(char *line, PWInfo * const pwinfo)
             pwinfo->has_ul_ratio = 1;
         }
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* ratio down */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* ratio down */
         return 0;
     }
     if (*line != 0) {
@@ -485,46 +452,46 @@ static int parse_pw_line(char *line, PWInfo * const pwinfo)
             pwinfo->has_dl_ratio = 1;
         }
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* max cnx */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* max cnx */
         return 0;
     }
     if (*line != 0) {
-    pwinfo->per_user_max = (unsigned int) strtoul(line, NULL, 10);
+        pwinfo->per_user_max = (unsigned int) strtoul(line, NULL, 10);
         if (pwinfo->per_user_max > 0U) {
             pwinfo->has_per_user_max = 1;
         }
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* files quota */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* files quota */
         return 0;
     }
     if (*line != 0) {
         pwinfo->has_quota_files = 1;
         pwinfo->quota_files = strtoull(line, NULL, 10);
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* size quota */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* size quota */
         return 0;
     }
     if (*line != 0) {
         pwinfo->has_quota_size = 1;
         pwinfo->quota_size = strtoull(line, NULL, 10);
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* allowed local ip */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* allowed local ip */
         return 0;
     }
     pwinfo->allow_local_ip = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* denied local ip */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* denied local ip */
         return 0;
     }
     pwinfo->deny_local_ip = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* allowed client ip */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* allowed client ip */
         return 0;
     }
     pwinfo->allow_client_ip = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* denied client ip */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* denied client ip */
         return 0;
     }
     pwinfo->deny_client_ip = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* time */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* time */
         return 0;
     }
     if (sscanf(line, "%u-%u", &pwinfo->time_begin, &pwinfo->time_end) == 2 &&
@@ -640,6 +607,25 @@ static FILE *create_newpasswd(const char * const file,
     }
 
     return fp2;
+}
+
+static int commit_newpasswd(FILE * const fp2, const char * const file2,
+                              const char * const file)
+{
+    fflush(fp2);
+#ifdef HAVE_FILENO
+    fsync(fileno(fp2));
+#endif
+    if (fclose(fp2) != 0) {
+        perror("Unable to close the file");
+    } else if (rename(file2, file) == 0) {
+        return 0;
+    } else {
+        perror("Unable to rename the file");
+    }
+    unlink(file2);
+
+    return -1;
 }
 
 static int add_new_pw_line(FILE * const fp2, const PWInfo * const pwinfo)
@@ -902,24 +888,16 @@ static int do_useradd(const char * const file,
         fprintf(stderr, "Unable to append a line\n");
         goto bye;
     }
-    fflush(fp2);
-#ifdef HAVE_FILENO
-    fsync(fileno(fp2));
-#endif
-    if (fclose(fp2) != 0) {
-        perror("Unable to close the file");
-        goto bye2;
+    if (commit_newpasswd(fp2, file2, file) == 0) {
+        free(file2);
+        return 0;
     }
-    if (rename(file2, file) != 0) {
-        perror("Unable to rename the file");
-        goto bye2;
-    }
+
     free(file2);
-    return 0;
+    return PW_ERROR_UNEXPECTED_ERROR;
 
     bye:
     fclose(fp2);
-    bye2:
     unlink(file2);
     free(file2);
 
@@ -1062,24 +1040,16 @@ static int do_usermod(const char * const file,
         fprintf(stderr, "Unable to append a line\n");
         goto bye;
     }
-    fflush(fp2);
-#ifdef HAVE_FILENO
-    fsync(fileno(fp2));
-#endif
-    if (fclose(fp2) != 0) {
-        perror("Unable to close the file");
-        goto bye2;
+    if (commit_newpasswd(fp2, file2, file) == 0) {
+        free(file2);
+        return 0;
     }
-    if (rename(file2, file) != 0) {
-        perror("Unable to rename the file");
-        goto bye2;
-    }
+
     free(file2);
-    return 0;
+    return PW_ERROR_UNEXPECTED_ERROR;
 
     bye:
     fclose(fp2);
-    bye2:
     unlink(file2);
     free(file2);
 
@@ -1110,25 +1080,12 @@ static int do_userdel(const char * const file,
         free(file2);
         return PW_ERROR_USER_ALREADY_EXIST;
     }
-    fflush(fp2);
-#ifdef HAVE_FILENO
-    fsync(fileno(fp2));
-#endif
-    if (fclose(fp2) != 0) {
-        perror("Unable to close the file");
-        goto bye2;
+    if (commit_newpasswd(fp2, file2, file) == 0) {
+        free(file2);
+        return 0;
     }
-    if (rename(file2, file) != 0) {
-        perror("Unable to rename the file");
-        goto bye2;
-    }
-    free(file2);
-    return 0;
 
-    bye2:
-    unlink(file2);
     free(file2);
-
     return PW_ERROR_UNEXPECTED_ERROR;
 }
 

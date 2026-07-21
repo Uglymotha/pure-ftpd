@@ -13,6 +13,23 @@
 
 static IPTrack *iptrack_list;
 
+static int iptrack_same_ip(const struct sockaddr_storage * const ip1,
+                           const struct sockaddr_storage * const ip2)
+{
+    if (STORAGE_FAMILY(*ip1) != STORAGE_FAMILY(*ip2)) {
+        return 0;
+    }
+    if (STORAGE_FAMILY(*ip1) == AF_INET) {
+        return STORAGE_SIN_ADDR_CONST(*ip1) == STORAGE_SIN_ADDR_CONST(*ip2);
+    }
+    if (STORAGE_FAMILY(*ip1) == AF_INET6) {
+        return IN6_ARE_ADDR_EQUAL(&STORAGE_SIN_ADDR6_NF_CONST(*ip1),
+                                  &STORAGE_SIN_ADDR6_NF_CONST(*ip2));
+    }
+
+    return 0;
+}
+
 void iptrack_delete_pid(const pid_t pid)
 {
     unsigned int c = 0U;
@@ -42,16 +59,8 @@ static unsigned int iptrack_find_ip_or_shift
 
     do {
         if (iptrack_list[c].pid != (pid_t) 0 &&
-            STORAGE_FAMILY(iptrack_list[c].ip) == STORAGE_FAMILY(*ip)) {
-            if (STORAGE_FAMILY(iptrack_list[c].ip) == AF_INET &&
-                STORAGE_SIN_ADDR_CONST(iptrack_list[c].ip) == STORAGE_SIN_ADDR_CONST(*ip)) {
-                return c;
-            } else if (STORAGE_FAMILY(iptrack_list[c].ip) == AF_INET6 &&
-                       IN6_ARE_ADDR_EQUAL
-                       (&STORAGE_SIN_ADDR6_NF_CONST(iptrack_list[c].ip),
-                        &STORAGE_SIN_ADDR6_NF_CONST(*ip))) {
-                return c;
-            }
+            iptrack_same_ip(&iptrack_list[c].ip, ip) != 0) {
+            return c;
         }
         c++;
     } while (c < maxusers);
@@ -73,16 +82,8 @@ unsigned int iptrack_get(const struct sockaddr_storage * const ip)
     }
     do {
         if (iptrack_list[c].pid != (pid_t) 0 &&
-            STORAGE_FAMILY(iptrack_list[c].ip) == STORAGE_FAMILY(*ip)) {
-            if (STORAGE_FAMILY(iptrack_list[c].ip) == AF_INET &&
-                STORAGE_SIN_ADDR_CONST(iptrack_list[c].ip) == STORAGE_SIN_ADDR_CONST(*ip)) {
-                nb++;
-            } else if (STORAGE_FAMILY(iptrack_list[c].ip) == AF_INET6 &&
-                       IN6_ARE_ADDR_EQUAL
-                       (&STORAGE_SIN_ADDR6_NF_CONST(iptrack_list[c].ip),
-                        &STORAGE_SIN_ADDR6_NF_CONST(*ip))) {
-                nb++;
-            }
+            iptrack_same_ip(&iptrack_list[c].ip, ip) != 0) {
+            nb++;
         }
         c++;
     } while (c < maxusers);
