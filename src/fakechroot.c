@@ -336,7 +336,7 @@ int fakechown(const char *file, uid_t uid, gid_t gid)
     if (fakexlate(curdirtmp, sizeof curdirtmp, file) != 0) {
         return -1;
     }
-    return chown(file, uid, gid);
+    return chown(curdirtmp, uid, gid);
 }
 
 # ifdef HAVE_MKFIFO
@@ -350,7 +350,7 @@ int fakemkfifo(const char *file, mode_t mode)
     if (fakexlate(curdirtmp, sizeof curdirtmp, file) != 0) {
         return -1;
     }
-    return mkfifo(file, mode);
+    return mkfifo(curdirtmp, mode);
 }
 # endif
 
@@ -365,7 +365,7 @@ int fakemknod(const char *file, mode_t mode, dev_t dev)
     if (fakexlate(curdirtmp, sizeof curdirtmp, file) != 0) {
         return -1;
     }
-    return mknod(file, mode, dev);
+    return mknod(curdirtmp, mode, dev);
 }
 # endif
 

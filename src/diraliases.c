@@ -47,13 +47,7 @@ int init_aliases(void)
                 }
             }
         } while (*dir == '#' || *dir == 0);
-        if (head == NULL) {
-            if ((head = tail = malloc(sizeof *head)) == NULL ||
-                (tail->alias = strdup(alias)) == NULL ||
-                (tail->dir = strdup(dir)) == NULL) {
-                die_mem();
-            }
-        } else {
+        {
             DirAlias *curr;
 
             if ((curr = malloc(sizeof *curr)) == NULL ||
@@ -61,10 +55,14 @@ int init_aliases(void)
                 (curr->dir = strdup(dir)) == NULL) {
                 die_mem();
             }
-            tail->next = curr;
+            curr->next = NULL;
+            if (tail == NULL) {
+                head = curr;
+            } else {
+                tail->next = curr;
+            }
             tail = curr;
         }
-        tail->next = NULL;
     }
     fclose(fp);
     aliases_up++;

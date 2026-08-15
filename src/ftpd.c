@@ -151,22 +151,6 @@ static void overlapcpy(char *d, const char *s)
     *d = 0;
 }
 
-static void safe_fd_set(const int fd, fd_set * const fds)
-{
-    if (fd == -1) {
-        return;
-    }
-    FD_SET(fd, fds);
-}
-
-static int safe_fd_isset(const int fd, const fd_set * const fds)
-{
-    if (fd == -1) {
-        return 0;
-    }
-    return FD_ISSET(fd, fds);
-}
-
 static int init_tz(void)
 {
     char stbuf[10];
@@ -5496,8 +5480,12 @@ static void standalone_server(void)
     errno = 0, timeout = &sd_notify_timeout;
 # endif
     while (stop_server == 0) {
-        safe_fd_set(listenfd, &rs);
-        safe_fd_set(listenfd6, &rs);
+        if (listenfd != -1) {
+            FD_SET(listenfd, &rs);
+        }
+        if (listenfd6 != -1) {
+            FD_SET(listenfd6, &rs);
+        }
         if (select(max_fd, &rs, NULL, NULL, timeout) <= 0) {
             if (errno && errno != EINTR) {
                 (void) sleep(1);

@@ -51,3 +51,29 @@ int pure_strcmp(const char * const s1, const char * const s2)
 
     return pure_memcmp(s1, s2, len + 1);
 }
+
+/*
+ * Like strtok(), but preserves empty fields and takes a single-character
+ * delimiter. The caller owns the cursor, so simultaneous parses are safe.
+ */
+char *pure_strtok2(char **cursor, const char delim)
+{
+    char *str;
+    char *end;
+
+    if (cursor == NULL || (str = *cursor) == NULL) {
+        return NULL;
+    }
+    end = str;
+    while (*end != 0 && *end != delim) {
+        end++;
+    }
+    if (*end == delim) {
+        *end = 0;
+        *cursor = end + 1;
+    } else {
+        *cursor = NULL;
+    }
+
+    return str;
+}

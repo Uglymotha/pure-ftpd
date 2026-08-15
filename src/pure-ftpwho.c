@@ -248,6 +248,15 @@ static char *xml_escaped(const char *const s_) {
             *bufpnt++ = ';';
             left -= sizeof "&amp;" - (size_t) 1U;
             break;
+        case '"':
+            if (left < sizeof "&quot;" - (size_t) 1U) {
+                *bufpnt = 0;
+                return buf;
+            }
+            *bufpnt++ = '&'; *bufpnt++ = 'q'; *bufpnt++ = 'u'; *bufpnt++ = 'o';
+            *bufpnt++ = 't'; *bufpnt++ = ';';
+            left -= sizeof "&quot;" - (size_t) 1U;
+            break;
         default:
             *bufpnt++ = (char) *s;
             left--;

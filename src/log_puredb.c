@@ -35,41 +35,11 @@ void pw_puredb_exit(void)
 }
 
 /*
- * The difference between this strtok() and the libc's one is that
- * this one doesn't skip empty fields, and takes a char instead of a
- * string as a delimiter.
- * This strtok2() variant leaves zeroes.
+ * Check whether an IP address matches a comma-separated pattern list.
+ * Returns 1 on match, 0 on no match, -1 on malformed same-family CIDR.
+ * Patterns whose family does not match the connection are skipped so an
+ * IPv4-only rule never matches an IPv6 peer, or the reverse.
  */
-
-static char *my_strtok2(char *str, const char delim)
-{
-    static char *s;
-    static char save;
-
-    if (str != NULL) {
-        if (*str == 0) {
-            return NULL;
-        }
-        s = str;
-        scan:
-        while (*s != 0 && *s != delim) {
-            s++;
-        }
-        save = *s;
-        *s = 0;
-
-        return str;
-    }
-    if (s == NULL || save == 0) {
-        return NULL;
-    }
-    s++;
-    str = s;
-
-    goto scan;
-}
-
-/* Check whether an IP address matches a pattern. 1 = match 0 = nomatch */
 
 static int ipv6_cidr_match(const unsigned char *addr,
                            const unsigned char *pattern_addr,
@@ -126,8 +96,12 @@ static int access_ip_match(const struct sockaddr_storage * const sa,
             if (ip0 > 255U || ip1 > 255U || ip2 > 255U || ip3 > 255U) {
                 goto ipcheck_nomatch;
             }
-            if (sa_family != AF_INET || netbits == 0U ||
-                netbits > 32U) {
+            if (sa_family != AF_INET) {
+                goto ipcheck_nomatch;
+            }
+            if (netbits == 0U || netbits > 32U) {
+                logfile(LOG_WARNING,
+                        "puredb: invalid IPv4 CIDR pattern [%s]", pattern);
                 return -1;
             }
             ip =
@@ -155,6 +129,7 @@ static int access_ip_match(const struct sockaddr_storage * const sa,
             char addr_buf[256];
             char *slash;
             unsigned int prefix6;
+            int prefix6_valid = 1;
             struct addrinfo hints, *res;
             int on;
 
@@ -170,13 +145,19 @@ static int access_ip_match(const struct sockaddr_storage * const sa,
                 val = strtoul(slash + 1, &endptr, 10);
                 if (endptr == slash + 1 || *endptr != 0 ||
                     val == 0U || val > 128U) {
-                    return -1;
+                    prefix6_valid = 0;
+                } else {
+                    prefix6 = (unsigned int) val;
                 }
-                prefix6 = (unsigned int) val;
             }
             if (inet_pton(AF_INET6, addr_buf, &pat6) == 1) {
                 if (sa_family != AF_INET6) {
                     goto ipcheck_nomatch;
+                }
+                if (prefix6_valid == 0) {
+                    logfile(LOG_WARNING,
+                            "puredb: invalid IPv6 CIDR pattern [%s]", pattern);
+                    return -1;
                 }
                 if (ipv6_cidr_match(STORAGE_SIN_ADDR6_CONST(*sa),
                                     (const unsigned char *) &pat6,
@@ -251,13 +232,18 @@ static int access_ip_check(const struct sockaddr_storage * const sa,
         return 0;
     }
     if (*deny == 0) {
-        if (access_ip_match(sa, allow) != 0) {
+        if (access_ip_match(sa, allow) == 1) {
             return 0;
         }
         return -1;
     }
-    if (access_ip_match(sa, allow) != 0 && access_ip_match(sa, deny) == 0) {
-        return 0;
+    {
+        const int allow_match = access_ip_match(sa, allow);
+        const int deny_match = access_ip_match(sa, deny);
+
+        if (allow_match == 1 && deny_match == 0) {
+            return 0;
+        }
     }
     return -1;
 }
@@ -299,10 +285,11 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
 {
     char *allow_local_ip, *deny_local_ip;
     char *allow_remote_ip, *deny_remote_ip;
+    char *cursor = line;
     char *endptr;
     const char *time_restrictions;
 
-    if ((line = my_strtok2(line, *PW_LINE_SEP)) == NULL || *line == 0) {   /* pwd */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* pwd */
         return -1;
     }
     {
@@ -328,18 +315,18 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
             }
         }
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL || *line == 0) {   /* uid */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* uid */
         return -1;
     }
     result->uid = (uid_t) strtoul(line, &endptr, 10);
-    if (line == endptr || *endptr != 0 || result->uid <= (uid_t) 0) {
+    if (line == endptr || *endptr != 0) {
         return -1;
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL || *line == 0) {   /* gid */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* gid */
         return -1;
     }
     result->gid = (gid_t) strtoul(line, &endptr, 10);
-    if (line == endptr || *endptr != 0 || result->gid <= (gid_t) 0) {
+    if (line == endptr || *endptr != 0) {
         return -1;
     }
 #ifndef ACCEPT_ROOT_VIRTUAL_USERS
@@ -347,16 +334,16 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         return -1;
     }
 #endif
-    if (my_strtok2(NULL, *PW_LINE_SEP) == NULL) {   /* gecos */
+    if (pure_strtok2(&cursor, *PW_LINE_SEP) == NULL) {   /* gecos */
         return -1;
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL || *line == 0) {   /* home */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL || *line == 0) {   /* home */
         return -1;
     }
     if ((result->dir = strdup(line)) == NULL || *result->dir != '/') {
         return -1;
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* bw_ul */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* bw_ul */
         return 0;
     }
 #ifdef THROTTLING
@@ -365,7 +352,7 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         result->throttling_bandwidth_ul = strtoul(line, NULL, 10);
     }
 #endif
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* bw_dl */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* bw_dl */
         return 0;
     }
 #ifdef THROTTLING
@@ -374,7 +361,7 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         result->throttling_bandwidth_dl = strtoul(line, NULL, 10);
     }
 #endif
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* ratio up */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* ratio up */
         return 0;
     }
 #ifdef RATIOS
@@ -385,7 +372,7 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         }
     }
 #endif
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* ratio down */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* ratio down */
         return 0;
     }
 #ifdef RATIOS
@@ -396,7 +383,7 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         }
     }
 #endif
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* max cnx */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* max cnx */
         return 0;
     }
 #ifdef PER_USER_LIMITS
@@ -404,7 +391,7 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         result->per_user_max = (unsigned int) strtoull(line, NULL, 10);
     }
 #endif
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* files quota */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* files quota */
         return 0;
     }
 #ifdef QUOTAS
@@ -413,7 +400,7 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         result->user_quota_files = strtoull(line, NULL, 10);
     }
 #endif
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* size quota */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* size quota */
         return 0;
     }
 #ifdef QUOTAS
@@ -422,19 +409,19 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         result->user_quota_size = strtoull(line, NULL, 10);
     }
 #endif
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* allowed local ip */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* allowed local ip */
         return 0;
     }
     allow_local_ip = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* denied local ip */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* denied local ip */
         return 0;
     }
     deny_local_ip = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* allowed remote ip */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* allowed remote ip */
         return 0;
     }
     allow_remote_ip = line;
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* denied remote ip */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* denied remote ip */
         return 0;
     }
     deny_remote_ip = line;
@@ -442,7 +429,7 @@ static int pw_puredb_parseline(char *line, const char * const pwd,
         access_ip_check(peer, allow_remote_ip, deny_remote_ip) != 0) {
         return -1;
     }
-    if ((line = my_strtok2(NULL, *PW_LINE_SEP)) == NULL) {   /* time restrictions */
+    if ((line = pure_strtok2(&cursor, *PW_LINE_SEP)) == NULL) {   /* time restrictions */
         return 0;
     }
     time_restrictions = line;
