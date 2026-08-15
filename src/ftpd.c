@@ -1349,6 +1349,11 @@ void douser(const char *username)
             pw = &pw_;
         }
 #else
+# ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            get_cap(CAP_SETGID);
+        }
+# endif
         if (((pw = getpwnam("ftp")) == NULL &&
              (pw = getpwnam("_ftp")) == NULL) ||
             pw->pw_uid == 0 || pw->pw_gid == 0 ||
@@ -1358,11 +1363,22 @@ void douser(const char *username)
             cantsec:
             die(421, LOG_ERR, MSG_UNABLE_SECURE_ANON);
         }
+# ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            drop_cap(CAP_SETGID);
+        }
+# endif
 # ifdef ANON_DIR
         if ((pw->pw_dir = strdup(ANON_DIR)) == NULL) {
             die_mem();
         }
 # endif
+#endif
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            get_cap(CAP_DAC_READ_SEARCH);
+            get_cap(CAP_SYS_CHROOT);
+        }
 #endif
 #ifdef WITH_VIRTUAL_HOSTS
         if (getnameinfo((struct sockaddr *) &ctrlconn, STORAGE_LEN(ctrlconn),
@@ -1415,6 +1431,12 @@ void douser(const char *username)
             logfile(LOG_INFO, MSG_ANONYMOUS_LOGGED_VIRTUAL ": %s", hbuf);
         }
 #endif
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            drop_cap(CAP_DAC_READ_SEARCH);
+            drop_cap(CAP_SYS_CHROOT);
+        }
+#endif
         if (pw == NULL) {
             goto cantsec;
         }
@@ -1428,7 +1450,17 @@ void douser(const char *username)
 #ifdef THROTTLING
         if (throttling != 0) {
             addreply_noformat(0, MSG_BANDWIDTH_RESTRICTED);
+#ifdef USE_CAPABILITIES
+            if (have_caps == 1) {
+                get_cap(CAP_SYS_NICE);
+            }
+#endif
             (void) nice(NICE_VALUE);
+# ifdef USE_CAPABILITIES
+            if (have_caps == 1) {
+                drop_cap(CAP_SYS_NICE);
+            }
+# endif
         } else {
             throttling_delay = throttling_bandwidth_ul =
                 throttling_bandwidth_dl = 0UL;
@@ -1437,6 +1469,11 @@ void douser(const char *username)
 
 #ifndef NON_ROOT_FTP
         if (authresult.uid > (uid_t) 0) {
+# ifdef USE_CAPABILITIES
+            if (have_caps == 1) {
+                get_cap(CAP_SETUID);
+            }
+# endif
 # ifndef WITHOUT_PRIVSEP
             if (setuid(authresult.uid) != 0 || seteuid(authresult.uid) != 0) {
                 goto cantsec;
@@ -1445,11 +1482,16 @@ void douser(const char *username)
             if (seteuid(authresult.uid) != 0) {
                 goto cantsec;
             }
-#  ifdef USE_CAPABILITIES
-            drop_login_caps();
-#  endif
+# endif
+# ifdef USE_CAPABILITIES
+            if (have_caps == 1) {
+                drop_cap(CAP_SETUID);
+            }
 # endif
         }
+#endif
+#ifdef USE_CAPABILITIES
+        drop_login_caps();
 #endif
 
 #ifndef MINIMAL
@@ -1517,7 +1559,21 @@ static AuthResult pw_check(const char *account, const char *password,
         result.per_user_max = per_user_max;
 #endif
         result.backend_data = NULL;
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1 && auth_scan->auth->check == pw_pam_check) {
+            get_cap(CAP_AUDIT_WRITE);
+            get_cap(CAP_SETGID);
+            get_cap(CAP_SETUID);
+        }
+#endif
         auth_scan->auth->check(&result, account, password, sa, peer);
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1 && auth_scan->auth->check == pw_pam_check) {
+            drop_cap(CAP_AUDIT_WRITE);
+            drop_cap(CAP_SETGID);
+            drop_cap(CAP_SETUID);
+        }
+#endif
         if (result.auth_ok < 0) {
             break;
         } else if (result.auth_ok > 0) {
@@ -1753,6 +1809,11 @@ void dopass(char *password)
     (void) getname(authresult.uid);
     (void) getgroup(authresult.gid);
 
+#ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        get_cap(CAP_SETGID);
+    }
+#endif
     if (
 #if defined(WITH_LDAP) || defined(WITH_MYSQL) || defined(WITH_PGSQL) || defined(WITH_PUREDB) || defined(WITH_EXTAUTH)
         doinitsupgroups(NULL, authresult.uid, authresult.gid) != 0
@@ -1766,12 +1827,24 @@ void dopass(char *password)
         die(421, LOG_WARNING, MSG_NOTRUST);
 #endif
     }
+#ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        drop_cap(CAP_SETGID);
+    }
+#endif
 
     /* handle /home/user/./public_html form */
     if ((root_directory = strdup(authresult.dir)) == NULL) {
         die_mem();
     }
     hd = strstr(root_directory, "/./");
+#ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        get_cap(CAP_DAC_READ_SEARCH);
+        get_cap(CAP_CHOWN);
+        get_cap(CAP_SYS_CHROOT);
+    }
+#endif
     if (hd != NULL) {
         if (chrooted != 0) {
             die(421, LOG_DEBUG, MSG_CANT_DO_TWICE);
@@ -1806,10 +1879,27 @@ void dopass(char *password)
         wd[0] = '/';
         wd[1] = 0;
     }
+#ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        drop_cap(CAP_CHOWN);
+        drop_cap(CAP_DAC_READ_SEARCH);
+        drop_cap(CAP_SYS_CHROOT);
+    }
+#endif
 #ifndef NON_ROOT_FTP
+# ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        get_cap(CAP_SETGID);
+    }
+# endif
     if (setgid(authresult.gid) || setegid(authresult.gid)) {
         _EXIT(EXIT_FAILURE);
     }
+# ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        drop_cap(CAP_SETGID);
+    }
+# endif
 #endif
     if (check_trustedgroup(authresult.uid, authresult.gid) != 0) {
         userchroot = 0;
@@ -1833,7 +1923,17 @@ void dopass(char *password)
 #ifdef THROTTLING
     if ((throttling == 2) || (guest != 0 && throttling == 1)) {
         addreply_noformat(0, MSG_BANDWIDTH_RESTRICTED);
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            get_cap(CAP_SYS_NICE);
+        }
+#endif
         (void) nice(NICE_VALUE);
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            drop_cap(CAP_SYS_NICE);
+        }
+#endif
     } else {
         throttling_delay = throttling_bandwidth_dl =
             throttling_bandwidth_ul = 0UL;
@@ -1898,9 +1998,21 @@ void dopass(char *password)
     }
 #endif
     if (userchroot != 0 && chrooted == 0) {
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            get_cap(CAP_DAC_READ_SEARCH);
+            get_cap(CAP_SYS_CHROOT);
+        }
+#endif
         if (chdir(wd) || chroot(wd)) {    /* should never fail */
             die(421, LOG_ERR, MSG_CHROOT_FAILED);
         }
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            drop_cap(CAP_DAC_READ_SEARCH);
+            drop_cap(CAP_SYS_CHROOT);
+        }
+#endif
         chrooted = 1;
 #ifdef RATIOS
         if (ratio_for_non_anon == 0) {
@@ -1917,9 +2029,19 @@ void dopass(char *password)
         }
         wd[0] = '/';
         wd[1] = 0;
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            get_cap(CAP_DAC_READ_SEARCH);
+        }
+#endif
         if (chdir(wd)) {
             _EXIT(EXIT_FAILURE);
         }
+#ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            drop_cap(CAP_DAC_READ_SEARCH);
+        }
+#endif
         addreply(230, MSG_CURRENT_RESTRICTED_DIR_IS, wd);
     } else {
         addreply(230, MSG_CURRENT_DIR_IS, wd);
@@ -1927,6 +2049,11 @@ void dopass(char *password)
 
 #ifndef NON_ROOT_FTP
     disablesignals();
+# ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        get_cap(CAP_SETUID);
+    }
+# endif
 # ifndef WITHOUT_PRIVSEP
     if (setuid(authresult.uid) != 0 || seteuid(authresult.uid) != 0) {
         _EXIT(EXIT_FAILURE);
@@ -1935,11 +2062,16 @@ void dopass(char *password)
     if (seteuid(authresult.uid) != 0) {
         _EXIT(EXIT_FAILURE);
     }
-#  ifdef USE_CAPABILITIES
-    drop_login_caps();
-#  endif
+# endif
+# ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        drop_cap(CAP_SETUID);
+    }
 # endif
     enablesignals();
+#endif
+#ifdef USE_CAPABILITIES
+    drop_login_caps();
 #endif
     logfile(LOG_INFO, MSG_IS_NOW_LOGGED_IN, account);
 #ifdef FTPWHO
@@ -2238,9 +2370,14 @@ static int doport3(const int protocol)
 # endif
     int on;
 
+# ifdef USE_CAPABILITIES
+    get_cap(CAP_NET_BIND_SERVICE);
+# endif
 # ifndef NON_ROOT_FTP
     disablesignals();
-    seteuid((uid_t) 0);
+    if (have_caps == 0) {
+        seteuid((uid_t) 0);
+    }
 # endif
     if ((datafd = socket(protocol, SOCK_STREAM, IPPROTO_TCP)) == -1) {
         data_socket_error:
@@ -2284,8 +2421,11 @@ static int doport3(const int protocol)
         portlistpnt++;
 # endif
     }
+# ifdef USE_CAPABILITIES
+    drop_cap(CAP_NET_BIND_SERVICE);
+# endif
 # ifndef NON_ROOT_FTP
-    if (seteuid(authresult.uid) != 0) {
+    if (have_caps == 0 && seteuid(authresult.uid) != 0) {
         _EXIT(EXIT_FAILURE);
     }
     enablesignals();
@@ -5064,9 +5204,19 @@ static void doit(void)
 #ifndef NON_ROOT_FTP
     wd[0] = '/';
     wd[1] = 0;
+#ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        get_cap(CAP_DAC_READ_SEARCH);
+    }
+#endif
     if (chdir(wd)) {
         _EXIT(EXIT_FAILURE);
     }
+#ifdef USE_CAPABILITIES
+    if (have_caps == 1) {
+        drop_cap(CAP_DAC_READ_SEARCH);
+    }
+#endif
 #endif
     {
         int fodder;
@@ -5265,10 +5415,20 @@ static void dodaemonize(void)
             perror(MSG_STANDALONE_FAILED " - setsid");   /* continue anyway */
         }
 # ifndef NON_ROOT_FTP
+#  ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            get_cap(CAP_DAC_READ_SEARCH);
+        }
+#  endif
         if (chdir("/") != 0) {
             perror("chdir");
             _EXIT(EXIT_FAILURE);
         }
+#  ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            drop_cap(CAP_DAC_READ_SEARCH);
+        }
+#  endif
 # endif
         i = open_max();
         do {
@@ -5417,12 +5577,22 @@ static void standalone_server(void)
                        (void *) &tfo, sizeof tfo);
         }
 # endif
+# ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            get_cap(CAP_NET_BIND_SERVICE);
+        }
+# endif
         if (bind(listenfd, res->ai_addr, (socklen_t) res->ai_addrlen) != 0 ||
             listen(listenfd, maxusers > 0U ?
                    3U + maxusers / 8U : DEFAULT_BACKLOG) != 0) {
             freeaddrinfo(res);
             goto cant_bind;
         }
+# ifdef USE_CAPABILITIES
+        if (have_caps == 1) {
+            drop_cap(CAP_NET_BIND_SERVICE);
+        }
+# endif
         freeaddrinfo(res);
         set_cloexec_flag(listenfd);
     }
@@ -5447,6 +5617,11 @@ static void standalone_server(void)
                            (void *) &tfo, sizeof tfo);
             }
 # endif
+# ifdef USE_CAPABILITIES
+            if (have_caps == 1) {
+                get_cap(CAP_NET_BIND_SERVICE);
+            }
+# endif
             if (bind(listenfd6, res6->ai_addr,
                      (socklen_t) res6->ai_addrlen) != 0 ||
                 listen(listenfd6, maxusers > 0U ?
@@ -5454,6 +5629,11 @@ static void standalone_server(void)
                 freeaddrinfo(res6);
                 goto cant_bind;
             }
+# ifdef USE_CAPABILITIES
+            if (have_caps == 1) {
+                drop_cap(CAP_NET_BIND_SERVICE);
+            }
+# endif
             freeaddrinfo(res6);
             set_cloexec_flag(listenfd6);
         }
@@ -5570,6 +5750,8 @@ int pureftpd_start(int argc, char *argv[], const char *home_directory_)
     int bypass_ipv6 = 0;
     struct passwd *pw;
 
+    root_started = (getuid() == 0);
+    have_caps = get_startup_caps();
     (void) home_directory_;
 #ifdef NON_ROOT_FTP
     home_directory = home_directory_;
@@ -5609,7 +5791,9 @@ int pureftpd_start(int argc, char *argv[], const char *home_directory_)
     sd_notifyf(0, "STATUS=Starting Pure FTPd\nMAINPID=%d", getpid());
 #endif
 #ifdef USE_CAPABILITIES
-    set_initial_caps();
+    if (have_caps == 1) {
+        set_initial_caps();
+    }
 #endif
     set_signals();
 
